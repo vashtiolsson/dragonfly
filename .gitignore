@@ -1,0 +1,15 @@
+# YOLO output
+runs/
+
+# datasets
+data/raw/
+
+# generated results
+alerts.csv
+
+# python cache
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
