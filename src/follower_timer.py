@@ -6,12 +6,13 @@ import cv2
 from ultralytics import YOLO
 
 
-VIDEO_PATH = Path("data/raw/hallway_test.mp4")
+BASE_DIR = Path(__file__).resolve().parent.parent
+VIDEO_PATH = BASE_DIR / "data" / "raw" / "hallway_test.mp4"
+TRACKER_CONFIG = BASE_DIR / "botsort_reid.yaml"
+ALERT_FILE = BASE_DIR / "alerts.csv"
 
 THRESHOLD_SECONDS = 6.0   # alert if same ID present for more than this
 COOLDOWN_SECONDS = 5.0    # don't spam alerts constantly
-
-ALERT_FILE = Path("alerts.csv")
 
 
 def get_fps(video_path: Path) -> float:
@@ -22,7 +23,7 @@ def get_fps(video_path: Path) -> float:
 
 
 def init_csv():
-    """Create CSV file with header if it doesn't exist"""
+    """Create CSV file with header if it doesn't exist."""
     if not ALERT_FILE.exists():
         with open(ALERT_FILE, "w", newline="") as f:
             writer = csv.writer(f)
@@ -35,7 +36,7 @@ def init_csv():
 
 
 def log_alert(video_name, track_id, alert_time, duration):
-    """Append alert to CSV"""
+    """Append alert to CSV."""
     with open(ALERT_FILE, "a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([
@@ -47,16 +48,19 @@ def log_alert(video_name, track_id, alert_time, duration):
 
 
 def main():
-
     if not VIDEO_PATH.exists():
         print(f"Video not found: {VIDEO_PATH}")
         print("Put a video in data/raw/ and name it hallway_test.mp4 (or change VIDEO_PATH).")
         return
 
+    if not TRACKER_CONFIG.exists():
+        print(f"Tracker config not found: {TRACKER_CONFIG}")
+        print("Create botsort_reid.yaml in the project root.")
+        return
+
     init_csv()
 
     fps = get_fps(VIDEO_PATH)
-
     threshold_frames = int(THRESHOLD_SECONDS * fps)
     cooldown_frames = int(COOLDOWN_SECONDS * fps)
 
@@ -65,15 +69,12 @@ def main():
     model = YOLO("yolov8n.pt")
 
     consecutive = defaultdict(int)
-
     cooldown = 0
-    alert_fired_for_id = None
-
     frame_idx = 0
 
     results_iter = model.track(
         source=str(VIDEO_PATH),
-        tracker="bytetrack.yaml",
+        tracker=str(TRACKER_CONFIG),
         classes=[0],
         persist=True,
         stream=True,
@@ -81,7 +82,6 @@ def main():
     )
 
     for r in results_iter:
-
         frame_idx += 1
 
         if cooldown > 0:
@@ -93,7 +93,6 @@ def main():
             ids_in_frame = set(int(x) for x in r.boxes.id.tolist())
 
         if ids_in_frame:
-
             for tid in ids_in_frame:
                 consecutive[tid] += 1
 
@@ -105,12 +104,11 @@ def main():
             main_frames = consecutive[main_id]
 
             if main_frames >= threshold_frames and cooldown == 0:
-
                 duration_sec = main_frames / fps
                 time_sec = frame_idx / fps
 
                 print(
-                    f"🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨 ALERT at ~{time_sec:.1f}s: ID {main_id} present for {duration_sec:.1f}s"
+                    f"🚨🚨🚨 ALERT at ~{time_sec:.1f}s: ID {main_id} present for {duration_sec:.1f}s"
                 )
 
                 log_alert(
@@ -121,14 +119,13 @@ def main():
                 )
 
                 cooldown = cooldown_frames
-                alert_fired_for_id = main_id
 
         else:
             for tid in list(consecutive.keys()):
                 consecutive[tid] = 0
 
     print("Done. Check runs/track/ for the annotated output video.")
-    print("Alerts saved to alerts.csv")
+    print(f"Alerts saved to {ALERT_FILE}")
 
 
 if __name__ == "__main__":
