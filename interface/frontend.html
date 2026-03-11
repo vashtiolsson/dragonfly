@@ -51,6 +51,7 @@ body {
 }
 
 .screen {
+    position: relative;
     width: 100%;
     height: 100%;
     border-radius: 32px;
@@ -203,6 +204,35 @@ input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 10px; border:
 <div class="phone">
 <div class="screen">
 
+    <div id="alert-popup" style="
+    display:none;
+    position:absolute;
+    top:20px;
+    left:20px;
+    right:20px;
+    z-index:2000;
+    background:#ef4444;
+    color:white;
+    padding:16px;
+    border-radius:18px;
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
+">
+    <div style="font-weight:700; font-size:16px; margin-bottom:6px;">Safety Alert</div>
+    <div id="alert-message" style="font-size:14px; line-height:1.4;"></div>
+    <button onclick="dismissAlert()" style="
+        margin-top:10px;
+        background:white;
+        color:#b91c1c;
+        border:none;
+        border-radius:10px;
+        padding:8px 12px;
+        font-weight:700;
+        cursor:pointer;
+    ">
+        Dismiss
+    </button>
+</div>
+
     <div class="login" id="login">
         <h1>DragonFly</h1>
         <p>Your Personal Safety Companion</p>
@@ -215,9 +245,9 @@ input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 10px; border:
         <div class="header" id="title">Feed</div>
 
         <div class="page active" id="home">
-            <video width="100%" style="border-radius: 15px;" autoplay muted loop>
-                <source src="https://cdn.pixabay.com/vimeo/239898295/woman-5278.mp4" type="video/mp4">
-            </video>
+            <video width="100%" style="border-radius: 15px;" autoplay muted loop controls>
+    <source src="{{ url_for('serve_video') }}" type="video/mp4">
+</video>
         </div>
 
         <div class="page" id="contacts">
@@ -462,7 +492,44 @@ function toggleMapList(listName) {
     document.getElementById(listName + '-list').classList.add('active');
     document.getElementById('tab-' + listName).classList.add('active');
 }
+
+let lastAlertTimestamp = 0;
+
+async function checkFollowerAlert() {
+    try {
+        const res = await fetch("http://127.0.0.1:5000/alert");
+        const data = await res.json();
+
+        if (data.active && data.timestamp !== lastAlertTimestamp) {
+            lastAlertTimestamp = data.timestamp;
+
+            document.getElementById("alert-message").innerText =
+                `${data.message}\nTrack ID: ${data.track_id}\nSeen for ${data.duration_sec}s`;
+
+            document.getElementById("alert-popup").style.display = "block";
+        }
+    } catch (err) {
+        console.log("Could not reach backend:", err);
+    }
+}
+
+async function dismissAlert() {
+    document.getElementById("alert-popup").style.display = "none";
+
+    try {
+        await fetch("http://127.0.0.1:5000/clear_alert", {
+            method: "POST"
+        });
+    } catch (err) {
+        console.log("Could not clear alert:", err);
+    }
+}
+
+setInterval(checkFollowerAlert, 1000);
+
 </script>
+
+
 
 </body>
 </html>
