@@ -1,18 +1,34 @@
 from pathlib import Path
 from collections import defaultdict
 import csv
+import threading
+import time
 
 import cv2
+from flask import Flask, jsonify, render_template, send_from_directory
+from flask_cors import CORS
 from ultralytics import YOLO
 
+
+app = Flask(__name__, template_folder="../interface")
+CORS(app)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 VIDEO_PATH = BASE_DIR / "data" / "raw" / "hallway_test.mp4"
 TRACKER_CONFIG = BASE_DIR / "botsort_reid.yaml"
 ALERT_FILE = BASE_DIR / "alerts.csv"
 
-THRESHOLD_SECONDS = 6.0   # alert if same ID present for more than this
-COOLDOWN_SECONDS = 5.0    # don't spam alerts constantly
+THRESHOLD_SECONDS = 6.0
+COOLDOWN_SECONDS = 5.0
+
+latest_alert = {
+    "active": False,
+    "message": "",
+    "track_id": None,
+    "time_sec": None,
+    "duration_sec": None,
+    "timestamp": 0
+}
 
 
 def get_fps(video_path: Path) -> float:
@@ -23,7 +39,6 @@ def get_fps(video_path: Path) -> float:
 
 
 def init_csv():
-    """Create CSV file with header if it doesn't exist."""
     if not ALERT_FILE.exists():
         with open(ALERT_FILE, "w", newline="") as f:
             writer = csv.writer(f)
@@ -36,7 +51,6 @@ def init_csv():
 
 
 def log_alert(video_name, track_id, alert_time, duration):
-    """Append alert to CSV."""
     with open(ALERT_FILE, "a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([
@@ -47,15 +61,15 @@ def log_alert(video_name, track_id, alert_time, duration):
         ])
 
 
-def main():
+def run_tracking():
+    global latest_alert
+
     if not VIDEO_PATH.exists():
         print(f"Video not found: {VIDEO_PATH}")
-        print("Put a video in data/raw/ and name it hallway_test.mp4 (or change VIDEO_PATH).")
         return
 
     if not TRACKER_CONFIG.exists():
         print(f"Tracker config not found: {TRACKER_CONFIG}")
-        print("Create botsort_reid.yaml in the project root.")
         return
 
     init_csv()
@@ -67,7 +81,6 @@ def main():
     print(f"FPS ≈ {fps:.1f} | Alert threshold = {THRESHOLD_SECONDS}s (~{threshold_frames} frames)")
 
     model = YOLO("yolov8n.pt")
-
     consecutive = defaultdict(int)
     cooldown = 0
     frame_idx = 0
@@ -107,26 +120,52 @@ def main():
                 duration_sec = main_frames / fps
                 time_sec = frame_idx / fps
 
-                print(
-                    f"🚨🚨🚨 ALERT at ~{time_sec:.1f}s: ID {main_id} present for {duration_sec:.1f}s"
-                )
+                print(f"🚨 ALERT at ~{time_sec:.1f}s: ID {main_id} present for {duration_sec:.1f}s")
 
-                log_alert(
-                    VIDEO_PATH.name,
-                    main_id,
-                    time_sec,
-                    duration_sec
-                )
+                log_alert(VIDEO_PATH.name, main_id, time_sec, duration_sec)
+
+                latest_alert = {
+                    "active": True,
+                    "message": "Possible follower detected",
+                    "track_id": main_id,
+                    "time_sec": round(time_sec, 2),
+                    "duration_sec": round(duration_sec, 2),
+                    "timestamp": time.time()
+                }
 
                 cooldown = cooldown_frames
 
-        else:
-            for tid in list(consecutive.keys()):
-                consecutive[tid] = 0
+    print("Tracking finished.")
 
-    print("Done. Check runs/track/ for the annotated output video.")
-    print(f"Alerts saved to {ALERT_FILE}")
 
+@app.route("/alert", methods=["GET"])
+def get_alert():
+    return jsonify(latest_alert)
+
+
+@app.route("/clear_alert", methods=["POST"])
+def clear_alert():
+    global latest_alert
+    latest_alert = {
+        "active": False,
+        "message": "",
+        "track_id": None,
+        "time_sec": None,
+        "duration_sec": None,
+        "timestamp": 0
+    }
+    return jsonify({"ok": True})
+
+@app.route("/")
+def home():
+    return render_template("frontend.html")
+
+@app.route("/video")
+def serve_video():
+    return send_from_directory(VIDEO_PATH.parent, VIDEO_PATH.name)
 
 if __name__ == "__main__":
-    main()
+    tracking_thread = threading.Thread(target=run_tracking, daemon=True)
+    tracking_thread.start()
+
+    app.run(host="0.0.0.0", port=5000, debug=True)

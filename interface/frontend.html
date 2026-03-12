@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DragonFly Safety App</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+<style>
+:root {
+    --bg1: #0f172a;
+    --bg2: #1e1b4b;
+    --accent: #3b82f6;
+    --purple-grad: linear-gradient(135deg, #6366f1, #a855f7);
+    --card-bg: rgba(255, 255, 255, 0.08);
+    --border: rgba(255, 255, 255, 0.15);
+    --text-dim: #94a3b8;
+    --nav-bg: #020617;
+    /* Marker Colors */
+    --user-blue: #3b82f6;
+    --contact-purple: #a855f7;
+    --hospital-red: #ef4444;
+    --police-green: #22c55e;
+    --bar-orange: #f59e0b;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+body {
+    background: linear-gradient(135deg, #7c3aed, #ec4899, #f97316);
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.phone {
+    width: 375px;
+    height: 812px;
+    background: #111;
+    border-radius: 40px;
+    padding: 12px;
+    box-shadow: 0 40px 80px rgba(0,0,0,.5);
+    border: 4px solid #333;
+}
+
+.screen {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 32px;
+    overflow: hidden;
+    background: linear-gradient(180deg, #2e1065 0%, #020617 100%);
+    display: flex;
+    flex-direction: column;
+    color: white;
+}
+
+.app { display: none; flex-direction: column; height: 100%; }
+.header {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    border-bottom: 1px solid var(--border);
+    z-index: 1001;
+    background: rgba(46, 16, 101, 0.9);
+}
+
+.page { flex: 1; overflow-y: auto; padding: 15px; display: none; }
+.page.active { display: block; }
+
+/* MAP PAGE STYLES */
+#map-container {
+    width: 100%;
+    aspect-ratio: 1 / 1; 
+    margin-bottom: 15px;
+    border-radius: 24px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+#map { width: 100%; height: 100%; }
+
+.custom-pin {
+    width: 30px;
+    height: 30px;
+    border-radius: 50% 50% 50% 0;
+    position: absolute;
+    transform: rotate(-45deg);
+    left: 50%;
+    top: 50%;
+    margin: -15px 0 0 -15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid white;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+}
+.custom-pin span { transform: rotate(45deg); font-size: 14px; }
+
+/* MAP TABS */
+.map-tabs {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 10px;
+}
+.map-tab {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    cursor: pointer;
+    padding-bottom: 4px;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+.map-tab.active {
+    color: white;
+    border-bottom: 2px solid var(--accent);
+}
+.map-list { display: none; }
+.map-list.active { display: block; }
+
+.safety-location-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.loc-details h4 { font-size: 13px; font-weight: 600; }
+.loc-details p { font-size: 10px; color: var(--text-dim); }
+.nav-small-btn {
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    padding: 4px 10px;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+/* CONTACTS PAGE */
+.contact-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 18px; padding: 10px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+.contact-left { display: flex; align-items: center; gap: 10px; }
+.contact-avatar { width: 38px; height: 38px; background: var(--purple-grad); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+.contact-info h3 { font-size: 14px; }
+.contact-info p { font-size: 11px; color: var(--text-dim); }
+.contact-actions { display: flex; flex-direction: column; gap: 4px; }
+.share-btn, .view-btn { border: none; border-radius: 8px; color: white; padding: 5px 8px; font-size: 11px; font-weight: 600; min-width: 95px; cursor: pointer; }
+.share-btn { background: #1d4ed8; }
+.view-btn { background: #1d4ed8; }
+.view-btn.disabled { background: #475569; opacity: 0.6; cursor: not-allowed; }
+
+/* SETTINGS PAGE */
+.settings-title { font-size: 22px; font-weight: 700; margin-bottom: 15px; }
+.profile-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 22px; padding: 15px; margin-bottom: 18px; }
+.profile-info { display: flex; align-items: center; margin-bottom: 15px; }
+.avatar-main { width: 50px; height: 50px; background: var(--purple-grad); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 26px; margin-right: 14px; }
+.user-details h2 { font-size: 17px; }
+.user-details p { font-size: 13px; }
+.edit-btn { background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: white; width: 100%; padding: 10px; border-radius: 12px; font-weight: 600; cursor: pointer; font-size: 14px; }
+.section-label { font-size: 11px; font-weight: 700; color: var(--text-dim); letter-spacing: 1.2px; margin: 0 0 10px 5px; text-transform: uppercase; }
+.settings-group { background: var(--card-bg); border: 1px solid var(--border); border-radius: 18px; overflow: hidden; margin-bottom: 20px; }
+.setting-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); font-size: 15px; }
+.setting-row:last-child { border-bottom: none; }
+.sub-label { display: block; font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
+/* Switch Styles */
+.switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #334155; transition: .3s; border-radius: 24px; }
+.slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
+input:checked + .slider { background-color: #3b82f6; }
+input:checked + .slider:before { transform: translateX(20px); }
+
+/* Login/Nav */
+.login { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; text-align: center; }
+.btn-login { padding: 12px; border: none; border-radius: 10px; background: var(--purple-grad); color: white; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; }
+input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,.1); color: white; }
+.nav { height: 85px; background: var(--nav-bg); display: flex; justify-content: space-around; align-items: center; border-radius: 35px 35px 0 0; padding-bottom: 10px; z-index: 1001; }
+.nav-item { background: none; border: none; color: #64748b; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; flex: 1; }
+.nav-item svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 2; }
+.nav-item span { font-size: 11px; }
+.nav-item.active { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="phone">
+<div class="screen">
+
+    <div id="alert-popup" style="
+    display:none;
+    position:absolute;
+    top:20px;
+    left:20px;
+    right:20px;
+    z-index:2000;
+    background:#ef4444;
+    color:white;
+    padding:16px;
+    border-radius:18px;
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
+">
+    <div style="font-weight:700; font-size:16px; margin-bottom:6px;">Safety Alert</div>
+    <div id="alert-message" style="font-size:14px; line-height:1.4;"></div>
+    <button onclick="dismissAlert()" style="
+        margin-top:10px;
+        background:white;
+        color:#b91c1c;
+        border:none;
+        border-radius:10px;
+        padding:8px 12px;
+        font-weight:700;
+        cursor:pointer;
+    ">
+        Dismiss
+    </button>
+</div>
+
+    <div class="login" id="login">
+        <h1>DragonFly</h1>
+        <p>Your Personal Safety Companion</p>
+        <input id="username" type="text" placeholder="Username" value="John Doe">
+        <input id="password" type="password" placeholder="Password" value="12345">
+        <button class="btn-login" onclick="login()">Sign In</button>
+    </div>
+
+    <div class="app" id="app">
+        <div class="header" id="title">Feed</div>
+
+        <div class="page active" id="home">
+            <video width="100%" style="border-radius: 15px;" autoplay muted loop controls>
+    <source src="{{ url_for('serve_video') }}" type="video/mp4">
+</video>
+        </div>
+
+        <div class="page" id="contacts">
+            <div class="contact-card">
+                <div class="contact-left"><div class="contact-avatar">👩</div><div class="contact-info"><h3>Sarah</h3><p>@sarah_j</p></div></div>
+                <div class="contact-actions"><button class="share-btn">Share</button><button class="view-btn disabled">Not Sharing</button></div>
+            </div>
+            <div class="contact-card">
+                <div class="contact-left"><div class="contact-avatar">🧔</div><div class="contact-info"><h3>Mike</h3><p>@mike_chen</p></div></div>
+                <div class="contact-actions"><button class="share-btn">Share</button><button class="view-btn disabled">Not Sharing</button></div>
+            </div>
+            <div class="contact-card">
+                <div class="contact-left"><div class="contact-avatar">👧</div><div class="contact-info"><h3>Jane Doe</h3><p>@jane_d</p></div></div>
+                <div class="contact-actions"><button class="share-btn">Share</button><button class="view-btn" onclick="viewLocation('Jane')">View Location</button></div>
+            </div>
+            <div class="contact-card">
+                <div class="contact-left"><div class="contact-avatar">👩‍🦳</div><div class="contact-info"><h3>Mom</h3><p>@mom</p></div></div>
+                <div class="contact-actions"><button class="share-btn">Share</button><button class="view-btn" onclick="viewLocation('Mom')">View Location</button></div>
+            </div>
+            <div class="contact-card">
+                <div class="contact-left"><div class="contact-avatar">👨‍🦰</div><div class="contact-info"><h3>Alex</h3><p>@alex_b</p></div></div>
+                <div class="contact-actions"><button class="share-btn">Share</button><button class="view-btn" onclick="viewLocation('Alex')">View Location</button></div>
+            </div>
+            <div class="contact-card">
+                <div class="contact-left"><div class="contact-avatar">👩‍🦱</div><div class="contact-info"><h3>Emma</h3><p>@emma_t</p></div></div>
+                <div class="contact-actions"><button class="share-btn">Share</button><button class="view-btn" onclick="viewLocation('Emma')">View Location</button></div>
+            </div>
+            <div class="contact-card">
+                <div class="contact-left"><div class="contact-avatar">👨‍🦱</div><div class="contact-info"><h3>David</h3><p>@david_w</p></div></div>
+                <div class="contact-actions"><button class="share-btn">Share</button><button class="view-btn disabled">Not Sharing</button></div>
+            </div>
+        </div>
+
+        <div class="page" id="safeplaces">
+            <div id="map-container"><div id="map"></div></div>
+            
+            <div class="map-tabs">
+                <div class="map-tab active" id="tab-locations" onclick="toggleMapList('locations')">Nearby Locations</div>
+                <div class="map-tab" id="tab-people" onclick="toggleMapList('people')">Nearby People</div>
+            </div>
+
+            <div id="locations-list" class="map-list active">
+                <div class="safety-location-card">
+                    <div style="display:flex; align-items:center;">
+                        <div style="font-size:20px; margin-right:12px;">🚒</div>
+                        <div class="loc-details"><h4>Central Fire Station</h4><p>Emergency • 0.3 km</p></div>
+                    </div>
+                    <button class="nav-small-btn" onclick="navigate('fire')">Navigate</button>
+                </div>
+                <div class="safety-location-card">
+                    <div style="display:flex; align-items:center;">
+                        <div style="font-size:20px; margin-right:12px;">🏥</div>
+                        <div class="loc-details"><h4>AMC Hospital</h4><p>Emergency • 0.4 km</p></div>
+                    </div>
+                    <button class="nav-small-btn" onclick="navigate('hospital')">Navigate</button>
+                </div>
+                <div class="safety-location-card">
+                    <div style="display:flex; align-items:center;">
+                        <div style="font-size:20px; margin-right:12px;">👮</div>
+                        <div class="loc-details"><h4>Police Station</h4><p>Security • 0.8 km</p></div>
+                    </div>
+                    <button class="nav-small-btn" onclick="navigate('police')">Navigate</button>
+                </div>
+                <div class="safety-location-card">
+                    <div style="display:flex; align-items:center;">
+                        <div style="font-size:20px; margin-right:12px;">🍻</div>
+                        <div class="loc-details"><h4>Safe Haven Bar</h4><p>Partner • 1.2 km</p></div>
+                    </div>
+                    <button class="nav-small-btn" onclick="navigate('bar')">Navigate</button>
+                </div>
+            </div>
+
+            <div id="people-list" class="map-list">
+                <div class="safety-location-card">
+                    <div style="display:flex; align-items:center;">
+                        <div style="font-size:20px; margin-right:12px;">👨‍🦰</div>
+                        <div class="loc-details"><h4>Alex</h4><p>Sharing Location • 0.4 km</p></div>
+                    </div>
+                    <button class="nav-small-btn" onclick="navigate('Alex')">Navigate</button>
+                </div>
+                <div class="safety-location-card">
+                    <div style="display:flex; align-items:center;">
+                        <div style="font-size:20px; margin-right:12px;">👩‍🦱</div>
+                        <div class="loc-details"><h4>Emma</h4><p>Sharing Location • 0.5 km</p></div>
+                    </div>
+                    <button class="nav-small-btn" onclick="navigate('Emma')">Navigate</button>
+                </div>
+                <div class="safety-location-card">
+                    <div style="display:flex; align-items:center;">
+                        <div style="font-size:20px; margin-right:12px;">👧</div>
+                        <div class="loc-details"><h4>Jane Doe</h4><p>Sharing Location • 0.6 km</p></div>
+                    </div>
+                    <button class="nav-small-btn" onclick="navigate('Jane')">Navigate</button>
+                </div>
+                <div class="safety-location-card">
+                    <div style="display:flex; align-items:center;">
+                        <div style="font-size:20px; margin-right:12px;">👩‍🦳</div>
+                        <div class="loc-details"><h4>Mom</h4><p>Sharing Location • 0.9 km</p></div>
+                    </div>
+                    <button class="nav-small-btn" onclick="navigate('Mom')">Navigate</button>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="page" id="settings">
+            <h1 class="settings-title">Settings</h1>
+            <div class="profile-card">
+                <div class="profile-info"><div class="avatar-main">👤</div><div class="user-details"><h2 id="display-name">John Doe</h2><p>john.doe@email.com</p></div></div>
+                <button class="edit-btn">Edit Profile</button>
+            </div>
+
+            <p class="section-label">Camera Settings</p>
+            <div class="settings-group">
+                <div class="setting-row"><span>Video Quality</span><span style="color: var(--text-dim)">HD</span></div>
+                <div class="setting-row"><span>Night Mode</span><label class="switch"><input type="checkbox" checked><span class="slider"></span></label></div>
+            </div>
+
+            <p class="section-label">Safety</p>
+            <div class="settings-group">
+                <div class="setting-row"><span>Emergency Alerts</span><label class="switch"><input type="checkbox" checked><span class="slider"></span></label></div>
+                <div class="setting-row"><span>Share Location Automatically</span><label class="switch"><input type="checkbox"><span class="slider"></span></label></div>
+                <div class="setting-row" style="flex-direction: column; align-items: flex-start;">
+                    <span>Emergency Contacts</span>
+                    <span class="sub-label">Manage who receives alerts</span>
+                </div>
+            </div>
+        </div>
+
+        <nav class="nav">
+            <button id="nav-home" onclick="tab('home', this)" class="nav-item">
+                <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                <span>Feed</span>
+            </button>
+            <button id="nav-contacts" onclick="tab('contacts', this)" class="nav-item">
+                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+                <span>Contacts</span>
+            </button>
+            <button id="nav-safeplaces" onclick="tab('safeplaces', this)" class="nav-item">
+                <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                <span>Safe Places</span>
+            </button>
+            <button id="nav-settings" onclick="tab('settings', this)" class="nav-item">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                <span>Settings</span>
+            </button>
+        </nav>
+    </div>
+
+</div>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+let safeMap, routeLine;
+let markers = {};
+const userCoords = [52.3702, 4.8952];
+
+function createIcon(color, emoji) {
+    return L.divIcon({
+        className: 'custom-div-icon',
+        html: `<div class="custom-pin" style="background-color:${color}"><span>${emoji}</span></div>`,
+        iconSize: [30, 30],
+        iconAnchor: [15, 30]
+    });
+}
+
+function initMap() {
+    safeMap = L.map('map', { zoomControl: false }).setView(userCoords, 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(safeMap);
+    L.marker(userCoords, { icon: createIcon('var(--user-blue)', '📍') }).addTo(safeMap).bindPopup('<b>You</b>');
+    
+    // People
+    markers.Mom = L.marker([52.3740, 4.8890], { icon: createIcon('var(--contact-purple)', '👩‍🦳') }).addTo(safeMap).bindPopup('Mom');
+    markers.Jane = L.marker([52.3650, 4.9000], { icon: createIcon('var(--contact-purple)', '👧') }).addTo(safeMap).bindPopup('Jane Doe');
+    markers.Alex = L.marker([52.3685, 4.8970], { icon: createIcon('var(--contact-purple)', '👨‍🦰') }).addTo(safeMap).bindPopup('Alex');
+    markers.Emma = L.marker([52.3715, 4.8990], { icon: createIcon('var(--contact-purple)', '👩‍🦱') }).addTo(safeMap).bindPopup('Emma');
+    
+    // Locations
+    markers.hospital = L.marker([52.3680, 4.9030], { icon: createIcon('var(--hospital-red)', '🏥') }).addTo(safeMap).bindPopup('AMC Hospital');
+    markers.fire = L.marker([52.3720, 4.8920], { icon: createIcon('var(--hospital-red)', '🚒') }).addTo(safeMap).bindPopup('Central Fire Station');
+    markers.police = L.marker([52.3760, 4.9080], { icon: createIcon('var(--police-green)', '👮') }).addTo(safeMap).bindPopup('Police Station');
+    markers.bar = L.marker([52.3610, 4.8850], { icon: createIcon('var(--bar-orange)', '🍻') }).addTo(safeMap).bindPopup('Safe Haven Bar');
+}
+
+function navigate(key) {
+    if (!safeMap || !markers[key]) return;
+    const dest = markers[key].getLatLng();
+    if (routeLine) safeMap.removeLayer(routeLine);
+    routeLine = L.polyline([userCoords, [dest.lat, dest.lng]], {
+        color: 'var(--accent)', weight: 6, opacity: 0.7, dashArray: '10, 10'
+    }).addTo(safeMap);
+    safeMap.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
+    
+    // Removed markers[key].openPopup(); so it no longer auto-opens
+}
+
+function viewLocation(name) {
+    const mapBtn = document.getElementById('nav-safeplaces');
+    tab('safeplaces', mapBtn);
+    
+    // Auto-switch to the 'people' tab when coming from contacts
+    toggleMapList('people');
+
+    if (safeMap && markers[name]) {
+        safeMap.setView(markers[name].getLatLng(), 16);
+        // Removed the popup trigger here too just to be consistent
+    }
+}
+
+function login() {
+    const u = document.getElementById("username").value;
+    if(u) {
+        document.getElementById("display-name").innerText = u;
+        document.getElementById("login").style.display = "none";
+        document.getElementById("app").style.display = "flex";
+        if(!safeMap) initMap();
+    }
+}
+
+function tab(name, btn) {
+    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+    document.getElementById(name).classList.add("active");
+    document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("title").innerText = btn.querySelector('span').innerText;
+    if (name === 'safeplaces' && safeMap) setTimeout(() => safeMap.invalidateSize(), 100);
+}
+
+// TOGGLING MAP TABS
+function toggleMapList(listName) {
+    // Hide both lists
+    document.getElementById('locations-list').classList.remove('active');
+    document.getElementById('people-list').classList.remove('active');
+    
+    // Remove active state from both tabs
+    document.getElementById('tab-locations').classList.remove('active');
+    document.getElementById('tab-people').classList.remove('active');
+    
+    // Activate requested list and tab
+    document.getElementById(listName + '-list').classList.add('active');
+    document.getElementById('tab-' + listName).classList.add('active');
+}
+
+let lastAlertTimestamp = 0;
+
+async function checkFollowerAlert() {
+    try {
+        const res = await fetch("http://127.0.0.1:5000/alert");
+        const data = await res.json();
+
+        if (data.active && data.timestamp !== lastAlertTimestamp) {
+            lastAlertTimestamp = data.timestamp;
+
+            document.getElementById("alert-message").innerText =
+                `${data.message}\nTrack ID: ${data.track_id}\nSeen for ${data.duration_sec}s`;
+
+            document.getElementById("alert-popup").style.display = "block";
+        }
+    } catch (err) {
+        console.log("Could not reach backend:", err);
+    }
+}
+
+async function dismissAlert() {
+    document.getElementById("alert-popup").style.display = "none";
+
+    try {
+        await fetch("http://127.0.0.1:5000/clear_alert", {
+            method: "POST"
+        });
+    } catch (err) {
+        console.log("Could not clear alert:", err);
+    }
+}
+
+setInterval(checkFollowerAlert, 1000);
+
+</script>
+
+
+
+</body>
+</html>
